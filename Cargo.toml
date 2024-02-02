@@ -1,0 +1,15 @@
+[package]
+name = "clovy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bstr = "1.9.0"
+byteorder = "1.5.0"
+bitflags = "2.4.1"
+color-eyre = "0.6.2"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+integer-hasher = "0.1.1"
