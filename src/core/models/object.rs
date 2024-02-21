@@ -231,7 +231,7 @@ impl Serialize for Action {
         chunk.is_question = reader.read_wide_bool().expect("Failed to read is_question");
         chunk.use_apply_to = reader.read_wide_bool().expect("Failed to read use_apply_to");
         chunk.exe_type = reader.read_i32().expect("Failed to read exe_type");
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
+        chunk.name = reader.read_pointer_string_safe().expect("Failed to read name");
         chunk.code_id = reader.read_i32().expect("Failed to read code_id");
         chunk.argument_count = reader.read_i32().expect("Failed to read argument_count");
         chunk.who = reader.read_i32().expect("Failed to read who");

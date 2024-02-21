@@ -236,6 +236,28 @@ impl<T> Reader<T>
         self.container.read_exact(&mut buf)?;
         let pos = self.stream_position()?;
         let offset = u32::from_le_bytes(buf) as u64;
+        if offset == 0 {
+            return Err(Error::new(ErrorKind::InvalidData, "Pointer points to <null> value."));
+        }
+        self.container.seek(SeekFrom::Start(offset))?;
+        let mut str = Vec::new();
+        let mut i = self.container.read_u8()?;
+        while i != 0 {
+            str.push(i);
+            i = self.container.read_u8()?;
+        }
+        self.container.seek(SeekFrom::Start(pos))?;
+        Ok(BString::new(str))
+    }
+
+    pub fn read_pointer_string_safe(&mut self) -> Result<BString> {
+        let mut buf = [0; 4];
+        self.container.read_exact(&mut buf)?;
+        let pos = self.stream_position()?;
+        let offset = u32::from_le_bytes(buf) as u64;
+        if offset == 0 {
+            return Ok(BString::new(Vec::new()));
+        }
         self.container.seek(SeekFrom::Start(offset))?;
         let mut str = Vec::new();
         let mut i = self.container.read_u8()?;

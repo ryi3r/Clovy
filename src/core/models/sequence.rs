@@ -125,8 +125,11 @@ impl Serialize for Sequence {
         chunk.origin_y = reader.read_i32().expect("Failed to read origin_y");
         chunk.volume = reader.read_f32().expect("Failed to read volume");
 
+        info!("A");
         chunk.broadcast_messages.deserialize(reader, None, None);
+        info!("B");
         chunk.tracks.deserialize(reader, None, None);
+        info!("C");
 
         for _ in 0..reader.read_u32().expect("Failed to read function_ids count") {
             let key = reader.read_i32().expect("Failed to read function_id");
@@ -242,12 +245,15 @@ impl Serialize for Track {
         let track_count = reader.read_u32().expect("Failed to read tag_count");
 
         for _ in 0..tag_count {
+            info!("D");
             chunk.tags.push(reader.read_i32().expect("Failed to read tag"));
+            info!("E");
         }
         for _ in 0..owned_resource_count {
-            let str = reader.read_pointer_string().expect("Failed to read owned_resource");
+            let str = reader.read_pointer_string_safe().expect("Failed to read owned_resource");
             chunk.owned_resource_types.push(str.clone());
             info!("{str:?}");
+            info!("{:?}", reader.stream_position());
             if str.to_str().expect("String is not valid UTF-8") == "GMAnimCurve" {
                 chunk.owned_resources.push(OwnedResources::AnimCurve(AnimationCurve::deserialize(reader)));
             } else {

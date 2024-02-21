@@ -112,15 +112,6 @@ impl Serialize for Point {
 
         chunk.x = reader.read_f32().expect("Failed to read x");
         chunk.value = reader.read_f32().expect("Failed to read value");
-        if reader.read_u32().expect("Failed to check version") != 0 {
-            reader.version_info.set_version(2, 3, 1, 0);
-            reader.seek_relative(-4).expect("Failed to seek back");
-        } else {
-            if reader.read_u32().expect("Failed to check version") == 0 {
-                reader.version_info.set_version(2, 3, 1, 0);
-            }
-            reader.seek_relative(-8).expect("Failed to seek back");
-        }
         if reader.version_info.is_version_at_least(2, 3, 1, 0) {
             let point_x0 = reader.read_f32().expect("Failed to read x0");
             let point_y0 = reader.read_f32().expect("Failed to read y0");

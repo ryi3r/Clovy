@@ -43,7 +43,7 @@ impl Serialize for Sound {
 
         chunk.name = reader.read_pointer_string().expect("Failed to read name");
         chunk.flags = AudioEntryFlags::from_bits_truncate(reader.read_u32().expect("Failed to read flags"));
-        chunk.kind = reader.read_pointer_string().expect("Failed to read kind");
+        chunk.kind = reader.read_pointer_string_safe().expect("Failed to read kind");
         chunk.file = reader.read_pointer_string().expect("Failed to read file");
         chunk.effects = reader.read_u32().expect("Failed to read effects");
         chunk.volume = reader.read_f32().expect("Failed to read volume");
