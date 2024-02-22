@@ -40,6 +40,7 @@ pub mod acrv;
 pub mod seqn;
 
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum ChunkOutput {
     DummyChunk(DummyChunk),
 

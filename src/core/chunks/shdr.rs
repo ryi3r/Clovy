@@ -11,12 +11,12 @@ impl Serialize for ChunkSHDR {
     fn deserialize<R>(_reader: &mut Reader<R>) -> Self
         where R: Read + Seek,
     {
-        let chunk = Self {
-        };
+        /*let chunk = Self {
+        };*/
 
         //todo!("Not implemented");
 
-        chunk
+        Self {}
     }
 
     fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>)

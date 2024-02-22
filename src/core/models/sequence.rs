@@ -2,7 +2,7 @@ use crate::core::{reader::Reader, serializing::Serialize, writer::Writer, lists:
 use bitflags::bitflags;
 use bstr::{BString, ByteSlice};
 use byteorder::WriteBytesExt;
-use tracing::{warn, info};
+use tracing::{error, info, warn};
 use std::{fmt::Write, io::{Read, Seek}};
 use integer_hasher::IntMap;
 use super::{sprite::AnimSpeedType, animation_curve::AnimationCurve};
@@ -85,7 +85,7 @@ pub struct Track {
     pub is_creation_track: bool,
     pub tags: Vec<i32>,
     pub tracks: Vec<Track>,
-    pub keyframes: i32,
+    pub keyframes: TrackKeyframes,
     pub owned_resources: Vec<OwnedResources>,
     pub owned_resource_types: Vec<BString>,
 }
@@ -182,8 +182,7 @@ impl<T> Serialize for Keyframe<T>
         chunk.disabled = reader.read_bool().expect("Failed to read disabled");
         for _ in 0..reader.read_u32().expect("Failed to read channel count") {
             let channel = reader.read_i32().expect("Failed to read channel");
-            let data = T::deserialize(reader);
-            chunk.channels.insert(channel, data);
+            chunk.channels.insert(channel, T::deserialize(reader));
         }
 
         chunk
@@ -234,8 +233,9 @@ impl Serialize for Track {
             ..Default::default()
         };
 
+        info!("{:?}", reader.stream_position());
         chunk.model_name = reader.read_pointer_string().expect("Failed to read model_name");
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
+        chunk.name = reader.read_pointer_string_safe().expect("Failed to read name");
         chunk.built_in_name = reader.read_i32().expect("Failed to read built_in_name");
         chunk.traits = Trait::from_bits_retain(reader.read_i32().expect("Failed to read traits"));
         chunk.is_creation_track = reader.read_wide_bool().expect("Failed to read is_creation_track");
@@ -245,9 +245,7 @@ impl Serialize for Track {
         let track_count = reader.read_u32().expect("Failed to read tag_count");
 
         for _ in 0..tag_count {
-            info!("D");
             chunk.tags.push(reader.read_i32().expect("Failed to read tag"));
-            info!("E");
         }
         for _ in 0..owned_resource_count {
             let str = reader.read_pointer_string_safe().expect("Failed to read owned_resource");
@@ -263,10 +261,33 @@ impl Serialize for Track {
         for _ in 0..track_count {
             chunk.tracks.push(Track::deserialize(reader));
         }
+        info!("{:?}", chunk.model_name);
         match chunk.model_name.to_str().expect("String is not valid UTF-8") {
-            
+            "GMAudioTrack" => {
+                chunk.keyframes = TrackKeyframes::Audio(AudioKeyframes::deserialize(reader));
+            }
+            "GMStringTrack" => {
+                chunk.keyframes = TrackKeyframes::String(StringKeyframes::deserialize(reader));
+            }
+            "GMInstanceTrack" | "GMGraphicTrack" | "GMSequenceTrack" | "GMSpriteFramesTrack" | "GMBoolTrack" => {
+                chunk.keyframes = TrackKeyframes::Default(DefaultKeyframes::deserialize(reader));
+            }
+            "GMParticleTrack" => {
+                reader.version_info.set_version(2023, 2, 0, 0);
+                chunk.keyframes = TrackKeyframes::Default(DefaultKeyframes::deserialize(reader));
+            }
+            "GMAssetTrack" => {
+                error!("GMAssetTrack is not implemented. Please report this error!");
+            }
+            "GMRealTrack" | "GMColourTrack" => {
+                chunk.keyframes = TrackKeyframes::Real(RealKeyframes::deserialize(reader));
+            }
+            "GMTextTrack" => {
+                reader.version_info.set_version(2022, 2, 0, 0);
+                chunk.keyframes = TrackKeyframes::Text(TextKeyframes::deserialize(reader));
+            }
             _ => {
-                //panic!("Unknown sequence {:?} model name", chunk.model_name);
+                error!("Unknown sequence {:?} model name", chunk.model_name);
             }
         }
 
@@ -305,11 +326,25 @@ impl Serialize for Track {
         }
 
         match &chunk.keyframes {
+            TrackKeyframes::Audio(audio) => {
+                AudioKeyframes::serialize(audio, writer);
+            }
+            TrackKeyframes::String(string) => {
+                StringKeyframes::serialize(string, writer);
+            }
+            TrackKeyframes::Default(default) => {
+                DefaultKeyframes::serialize(default, writer);
+            }
+            TrackKeyframes::Real(real) => {
+                RealKeyframes::serialize(real, writer);
+            }
+            TrackKeyframes::Text(text) => {
+                TextKeyframes::serialize(text, writer);
+            }
             _ => {
-                panic!("No keyframes???");
+                error!("Unknown keyframe type");
             }
         }
-
     }
 }
 
@@ -338,15 +373,110 @@ impl Serialize for Moment {
 }
 
 #[derive(Default, Clone)]
-pub struct TrackKeyframes<T>
-    where T: Serialize + Default,
-{
-    pub data: GMSimpleList<Keyframe<T>>,
+pub enum TrackKeyframes {
+    #[default]
+    None,
+    Default(DefaultKeyframes),
+    Audio(AudioKeyframes),
+    String(StringKeyframes),
+    Real(RealKeyframes),
+    Text(TextKeyframes),
 }
 
-impl<T> Serialize for TrackKeyframes<T>
-    where T: Serialize + Default,
-{
+#[derive(Default, Clone)]
+pub struct DefaultKeyframes {
+    pub data: u32,
+}
+
+impl Serialize for DefaultKeyframes {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        //reader.pad_check_byte(4, 0).expect("Failed to pad reader");
+        chunk.data = reader.read_u32().expect("Failed to write data");
+
+        chunk
+    }
+
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        //writer.pad_check_byte(4, 0).expect("Failed to pad writer");
+        writer.write_u32(chunk.data).expect("Failed to write data");
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct AudioKeyframes {
+    // TODO: Replace this with the actual data
+    pub data: u32, // Pointer -> SOND Chunk Resource ID
+    pub mode: i32,
+}
+
+impl Serialize for AudioKeyframes {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        //reader.pad_check_byte(4, 0).expect("Failed to pad reader");
+        //chunk.data.deserialize(reader, None, None);
+        chunk.data = reader.read_u32().expect("Failed to read data");
+        if reader.read_u32().expect("Failed to read value (0)") != 0 {
+            warn!("Expected 0 in Audio Keyframe (Offset: {})", reader.stream_position().expect("Failed to read stream position"));
+        }
+        chunk.mode = reader.read_i32().expect("Failed to read mode");
+
+        chunk
+    }
+
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        //writer.pad_check_byte(4, 0).expect("Failed to pad writer");
+        //chunk.data.serialize(writer, None, None);
+        writer.write_u32(chunk.data).expect("Failed to write data");
+        writer.write_u32(0).expect("Failed to write value (0)");
+        writer.write_i32(chunk.mode).expect("Failed to write value");
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct StringKeyframes {
+    pub data: BString,
+}
+
+impl Serialize for StringKeyframes {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        //reader.pad_check_byte(4, 0).expect("Failed to pad reader");
+        //chunk.data.deserialize(reader, None, None);
+        chunk.data = reader.read_pointer_string().expect("Failed to read data");
+
+        chunk
+    }
+
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        //writer.pad_check_byte(4, 0).expect("Failed to pad writer");
+        //chunk.data.serialize(writer, None, None);
+        writer.write_pointer_string(&chunk.data).expect("Failed to write data");
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct RealKeyframes {
+    pub interpolation: i32,
+    pub list: GMSimpleList<Keyframe<RealData>>,
+}
+
+impl Serialize for RealKeyframes {
     fn deserialize<R>(reader: &mut Reader<R>) -> Self
             where R: Read + Seek {
         let mut chunk = Self {
@@ -354,7 +484,9 @@ impl<T> Serialize for TrackKeyframes<T>
         };
 
         reader.pad_check_byte(4, 0).expect("Failed to pad reader");
-        chunk.data.deserialize(reader, None, None);
+        //chunk.data.deserialize(reader, None, None);
+        chunk.interpolation = reader.read_i32().expect("Failed to read interpolation");
+        chunk.list.deserialize(reader, None, None);
 
         chunk
     }
@@ -362,6 +494,128 @@ impl<T> Serialize for TrackKeyframes<T>
     fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
             where W: Write + WriteBytesExt + Seek {
         writer.pad_check_byte(4, 0).expect("Failed to pad writer");
-        chunk.data.serialize(writer, None, None);
+        //chunk.data.serialize(writer, None, None);
+        writer.write_i32(chunk.interpolation).expect("Failed to write interpolation");
+        chunk.list.serialize(writer, None, None);
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct RealData {
+    pub value: f32,
+    pub curve: CurveData,
+}
+
+impl Serialize for RealData {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        chunk.value = reader.read_f32().expect("Failed to read value");
+        chunk.curve = CurveData::deserialize(reader);
+
+        chunk
+    }
+    
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        writer.write_f32(chunk.value).expect("Failed to write value");
+        CurveData::serialize(&chunk.curve, writer);
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct CurveData {
+    pub is_curve_embedded: bool,
+    pub embedded_animation_curve: Option<AnimationCurve>,
+    pub animation_curve_id: Option<u32>,
+}
+
+impl Serialize for CurveData {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        chunk.is_curve_embedded = reader.read_wide_bool().expect("Failed to read is_curve_embedded");
+        if chunk.is_curve_embedded {
+            if reader.read_i32().expect("Failed to read value (-1)") != -1 {
+                warn!("Expected -1 on CurveData");
+            }
+            chunk.embedded_animation_curve = Some(AnimationCurve::deserialize(reader));
+        } else {
+            chunk.animation_curve_id = Some(reader.read_u32().expect("Failed to read animation_curve_id"));
+        }
+
+        chunk
+    }
+
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        writer.write_wide_bool(chunk.is_curve_embedded).expect("Failed to write is_curve_embedded");
+        if chunk.is_curve_embedded {
+            writer.write_i32(-1).expect("Failed to write value (-1)");
+            AnimationCurve::serialize(chunk.embedded_animation_curve.as_ref().expect("Expected EmbeddedAnimationCurve but found nothing."), writer);
+        } else {
+            writer.write_u32(chunk.animation_curve_id.expect("Expected AnimationCurveId (i32) but found nothing.")).expect("Failed to write AnimationCurveId");
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct TextKeyframes {
+    pub text: BString,
+    pub wrap: bool,
+    pub alignment: AlignmentMagic,
+    pub font_index: i32,
+}
+
+impl Serialize for TextKeyframes {
+    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+            where R: Read + Seek {
+        let mut chunk = Self {
+            ..Default::default()
+        };
+
+        chunk.text = reader.read_pointer_string().expect("Failed to read text");
+        chunk.wrap = reader.read_wide_bool().expect("Failed to read wrap");
+        chunk.alignment.magic_number = reader.read_i32().expect("Failed to read alignment");
+        chunk.font_index = reader.read_i32().expect("Failed to read font_index");
+
+        chunk
+    }
+    
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+            where W: Write + WriteBytesExt + Seek {
+        writer.write_pointer_string(&chunk.text).expect("Failed to write text");
+        writer.write_wide_bool(chunk.wrap).expect("Failed to write wrap");
+        writer.write_i32(chunk.alignment.magic_number).expect("Failed to write alignment");
+        writer.write_i32(chunk.font_index).expect("Failed to write font_index");
+    }
+}
+
+#[derive(Default, Copy, Clone, PartialEq)]
+pub struct AlignmentMagic {
+    pub magic_number: i32,
+}
+
+impl AlignmentMagic {
+    pub fn set_vertical_alignment(&mut self, value: i32) {
+        self.magic_number = (self.magic_number & 0xff) | (value & 0xff) << 8;
+    }
+
+    pub fn set_horizontal_alignment(&mut self, value: i32) {
+        self.magic_number = (self.magic_number & !0xff) | (value & 0xff);
+    }
+
+    pub fn get_vertical_alignment(&self) -> i32 {
+        (self.magic_number >> 8) & 0xff
+    }
+
+    pub fn get_horizontal_alignment(&self) -> i32 {
+        self.magic_number & 0xff
     }
 }
