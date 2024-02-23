@@ -125,11 +125,8 @@ impl Serialize for Sequence {
         chunk.origin_y = reader.read_i32().expect("Failed to read origin_y");
         chunk.volume = reader.read_f32().expect("Failed to read volume");
 
-        info!("A");
         chunk.broadcast_messages.deserialize(reader, None, None);
-        info!("B");
         chunk.tracks.deserialize(reader, None, None);
-        info!("C");
 
         for _ in 0..reader.read_u32().expect("Failed to read function_ids count") {
             let key = reader.read_i32().expect("Failed to read function_id");

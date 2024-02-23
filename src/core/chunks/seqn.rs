@@ -16,6 +16,7 @@ impl Serialize for ChunkSEQN {
             ..Default::default()
         };
 
+        reader.pad_check_byte(4, 0).expect("Failed to pad");
         chunk.version = reader.read_i32().expect("Failed to read version");
         chunk.sequences.deserialize(reader, None, None);
 
