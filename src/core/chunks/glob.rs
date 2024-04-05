@@ -1,6 +1,6 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer};
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct ChunkGLOB {
@@ -8,26 +8,28 @@ pub struct ChunkGLOB {
 }
 
 impl Serialize for ChunkGLOB {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        for _ in 0..reader.read_u32().expect("Failed to read count") {
-            chunk.global_init_entries.push(reader.read_i32().expect("Failed to read global_init_entry"));
+        for _ in 0..reader.read_u32()? {
+            chunk.global_init_entries.push(reader.read_i32()?);
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_u32(chunk.global_init_entries.len() as _).expect("Failed to write global_init_entries size");
+        writer.write_u32(chunk.global_init_entries.len() as _)?;
         for global_init_entry in chunk.global_init_entries.iter() {
-            writer.write_i32(*global_init_entry).expect("Failed to write global_init_entry");
+            writer.write_i32(*global_init_entry)?;
         }
+
+        Ok(())
     }
 }

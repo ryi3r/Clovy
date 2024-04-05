@@ -1,7 +1,7 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer, lists::GMSimpleList};
 use bstr::BString;
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct Language {
@@ -11,7 +11,7 @@ pub struct Language {
 }
 
 impl Serialize for Language {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
@@ -24,16 +24,18 @@ impl Serialize for Language {
             chunk.entries.push(reader.read_pointer_string().expect("Failed to read string"));
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_pointer_string(&chunk.name).expect("Failed to write name");
-        writer.write_pointer_string(&chunk.region).expect("Failed to write region");
+        writer.write_pointer_string(&chunk.name)?;
+        writer.write_pointer_string(&chunk.region)?;
         for string in chunk.entries.values.iter() {
-            writer.write_pointer_string(string).expect("Failed to write string");
+            writer.write_pointer_string(string)?;
         }
+
+        Ok(())
     }
 }

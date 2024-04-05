@@ -7,7 +7,7 @@ use super::{GMVersionInfo, Chunk, GlobalData, serializing::{Serialize, FormatChe
 
 #[derive(Clone)]
 pub struct Reader<T>
-    where T: Read + Seek,
+    where T: Read + Seek + ReadBytesExt,
 {
     pub container: T,
     pub version_info: GMVersionInfo,
@@ -49,12 +49,11 @@ impl<T> Reader<T>
                     .into(),
             );
             let chunk_size = self.container.read_i32::<LittleEndian>()?;
-            match chunk_name.to_str().expect("Chunk name is not valid UTF-8") {
-                "EXTN" => {
-                    ChunkEXTN::do_format_check(self);
-                }
-                "FONT" => {
-                    ChunkFONT::do_format_check(self);
+            match chunk_name.to_str() {
+                Ok("EXTN") => { ChunkEXTN::format_check(self)?; }
+                Ok("FONT") => { ChunkFONT::format_check(self)?; }
+                Err(e) => {
+                    return Err(Error::new(ErrorKind::InvalidData, e));
                 }
                 _ => {}
             }
@@ -77,7 +76,7 @@ impl<T> Reader<T>
     pub fn deserialize(&mut self) -> Result<()> {
         macro_rules! deserialize_chunk {
             ($name: expr, $ctype: ty) => {
-                let value = <$ctype>::deserialize(self);
+                let value = <$ctype>::deserialize(self)?;
                 self.chunks.insert($name, value.into());
             }
         }
@@ -89,70 +88,33 @@ impl<T> Reader<T>
             self.container.seek(SeekFrom::Start(
                 self.current_chunk.start_offset,
             ))?;
-            let mut deserialized_chunk = true;
             let chunk_name = chunk.clone();
-            match chunk.to_str().expect("Chunk name is not valid UTF-8") {
-                "GEN8" => {
-                    deserialize_chunk!(chunk, ChunkGEN8);
-                }
-                "OPTN" => {
-                    deserialize_chunk!(chunk, ChunkOPTN);
-                }
-                "LANG" => {
-                    deserialize_chunk!(chunk, ChunkLANG);
-                }
-                "EXTN" => {
-                    deserialize_chunk!(chunk, ChunkEXTN);
-                }
-                "SOND" => {
-                    deserialize_chunk!(chunk, ChunkSOND);
-                }
-                "AGRP" => {
-                    deserialize_chunk!(chunk, ChunkAGRP);
-                }
-                "SPRT" => {
-                    deserialize_chunk!(chunk, ChunkSPRT);
-                }
-                "BGND" => {
-                    deserialize_chunk!(chunk, ChunkBGND);
-                }
-                "PATH" => {
-                    deserialize_chunk!(chunk, ChunkPATH);
-                }
-                "SCPT" => {
-                    deserialize_chunk!(chunk, ChunkSCPT);
-                }
-                "GLOB" => {
-                    deserialize_chunk!(chunk, ChunkGLOB);
-                }
-                "SHDR" => {
-                    deserialize_chunk!(chunk, ChunkSHDR);
-                }
-                "FONT" => {
-                    deserialize_chunk!(chunk, ChunkFONT);
-                }
-                "TMLN" => {
-                    deserialize_chunk!(chunk, ChunkTMLN);
-                }
-                "OBJT" => {
-                    deserialize_chunk!(chunk, ChunkOBJT);
-                }
-                "FEDS" => {
-                    deserialize_chunk!(chunk, ChunkFEDS);
-                }
-                "ACRV" => {
-                    deserialize_chunk!(chunk, ChunkACRV);
-                }
-                "SEQN" => {
-                    deserialize_chunk!(chunk, ChunkSEQN);
+            info!("Deserializing chunk: {}", chunk_name);
+            match chunk.to_str() {
+                Ok("GEN8") => { deserialize_chunk!(chunk, ChunkGEN8); }
+                Ok("OPTN") => { deserialize_chunk!(chunk, ChunkOPTN); }
+                Ok("LANG") => { deserialize_chunk!(chunk, ChunkLANG); }
+                Ok("EXTN") => { deserialize_chunk!(chunk, ChunkEXTN); }
+                Ok("SOND") => { deserialize_chunk!(chunk, ChunkSOND); }
+                Ok("AGRP") => { deserialize_chunk!(chunk, ChunkAGRP); }
+                Ok("SPRT") => { deserialize_chunk!(chunk, ChunkSPRT); }
+                Ok("BGND") => { deserialize_chunk!(chunk, ChunkBGND); }
+                Ok("PATH") => { deserialize_chunk!(chunk, ChunkPATH); }
+                Ok("SCPT") => { deserialize_chunk!(chunk, ChunkSCPT); }
+                Ok("GLOB") => { deserialize_chunk!(chunk, ChunkGLOB); }
+                Ok("SHDR") => { deserialize_chunk!(chunk, ChunkSHDR); }
+                Ok("FONT") => { deserialize_chunk!(chunk, ChunkFONT); }
+                Ok("TMLN") => { deserialize_chunk!(chunk, ChunkTMLN); }
+                Ok("OBJT") => { deserialize_chunk!(chunk, ChunkOBJT); }
+                Ok("FEDS") => { deserialize_chunk!(chunk, ChunkFEDS); }
+                Ok("ACRV") => { deserialize_chunk!(chunk, ChunkACRV); }
+                Ok("SEQN") => { deserialize_chunk!(chunk, ChunkSEQN); }
+                Err(e) => {
+                    return Err(Error::new(ErrorKind::InvalidData, e));
                 }
                 _ => {
                     error!("No deserializer for chunk: {}", chunk);
-                    deserialized_chunk = false;
                 }
-            }
-            if deserialized_chunk {
-                info!("Deserialized chunk: {}", chunk_name);
             }
         }
         Ok(())
@@ -195,21 +157,21 @@ impl<T> Reader<T>
         self.container.read_exact(buf)
     }
 
-    pub fn read_pointer_object_ext<P: Serialize>(&mut self, ptr: u64, return_after: bool) -> P {
+    pub fn read_pointer_object_ext<P: Serialize>(&mut self, ptr: u64, return_after: bool) -> Result<P> {
         if ptr == 0 {
-            panic!("Invalid (null) pointer.");
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid (null) pointer."))
         }
-        let return_to = self.container.stream_position().expect("Failed to get stram_position");
-        self.container.seek(SeekFrom::Start(ptr)).expect("Failed to seek to pointer");
+        let return_to = self.container.stream_position()?;
+        self.container.seek(SeekFrom::Start(ptr))?;
         let result = P::deserialize(self);
         if return_after {
-            self.container.seek(SeekFrom::Start(return_to)).expect("Failed to seek back");
+            self.container.seek(SeekFrom::Start(return_to))?;
         }
         result
     }
 
-    pub fn read_pointer_object<P: Serialize>(&mut self) -> P {
-        let ptr = self.read_u32().expect("Failed to get object pointer");
+    pub fn read_pointer_object<P: Serialize>(&mut self) -> Result<P> {
+        let ptr = self.read_u32()?;
         self.read_pointer_object_ext::<P>(ptr as _, true)
     }
     
@@ -269,51 +231,27 @@ impl<T> Reader<T>
         Ok(BString::new(str))
     }
 
-    pub fn read_u8(&mut self) -> Result<u8> {
-        self.container.read_u8()
-    }
+    pub fn read_u8(&mut self) -> Result<u8> { self.container.read_u8() }
 
-    pub fn read_u16(&mut self) -> Result<u16> {
-        self.container.read_u16::<LittleEndian>()
-    }
+    pub fn read_u16(&mut self) -> Result<u16> { self.container.read_u16::<LittleEndian>() }
 
-    pub fn read_u32(&mut self) -> Result<u32> {
-        self.container.read_u32::<LittleEndian>()
-    }
+    pub fn read_u32(&mut self) -> Result<u32> { self.container.read_u32::<LittleEndian>() }
 
-    pub fn read_u64(&mut self) -> Result<u64> {
-        self.container.read_u64::<LittleEndian>()
-    }
+    pub fn read_u64(&mut self) -> Result<u64> { self.container.read_u64::<LittleEndian>() }
 
-    pub fn read_u128(&mut self) -> Result<u128> {
-        self.container.read_u128::<LittleEndian>()
-    }
+    pub fn read_u128(&mut self) -> Result<u128> { self.container.read_u128::<LittleEndian>() }
 
-    pub fn read_i8(&mut self) -> Result<i8> {
-        self.container.read_i8()
-    }
+    pub fn read_i8(&mut self) -> Result<i8> { self.container.read_i8() }
 
-    pub fn read_i16(&mut self) -> Result<i16> {
-        self.container.read_i16::<LittleEndian>()
-    }
+    pub fn read_i16(&mut self) -> Result<i16> { self.container.read_i16::<LittleEndian>() }
 
-    pub fn read_i32(&mut self) -> Result<i32> {
-        self.container.read_i32::<LittleEndian>()
-    }
+    pub fn read_i32(&mut self) -> Result<i32> { self.container.read_i32::<LittleEndian>() }
 
-    pub fn read_i64(&mut self) -> Result<i64> {
-        self.container.read_i64::<LittleEndian>()
-    }
+    pub fn read_i64(&mut self) -> Result<i64> { self.container.read_i64::<LittleEndian>() }
 
-    pub fn read_i128(&mut self) -> Result<i128> {
-        self.container.read_i128::<LittleEndian>()
-    }
+    pub fn read_i128(&mut self) -> Result<i128> { self.container.read_i128::<LittleEndian>() }
 
-    pub fn read_f32(&mut self) -> Result<f32> {
-        self.container.read_f32::<LittleEndian>()
-    }
+    pub fn read_f32(&mut self) -> Result<f32> { self.container.read_f32::<LittleEndian>() }
 
-    pub fn read_f64(&mut self) -> Result<f64> {
-        self.container.read_f64::<LittleEndian>()
-    }
+    pub fn read_f64(&mut self) -> Result<f64> { self.container.read_f64::<LittleEndian>() }
 }

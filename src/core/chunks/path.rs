@@ -1,6 +1,6 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer, lists::GMPointerList, models::path::Path};
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct ChunkPATH {
@@ -8,21 +8,23 @@ pub struct ChunkPATH {
 }
 
 impl Serialize for ChunkPATH {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.paths.deserialize(reader, None, None);
+        chunk.paths.deserialize(reader, None, None)?;
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        chunk.paths.serialize(writer, None, None);
+        chunk.paths.serialize(writer, None, None)?;
+
+        Ok(())
     }
 }

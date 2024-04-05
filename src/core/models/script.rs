@@ -1,7 +1,7 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer};
 use bstr::BString;
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct Script {
@@ -11,31 +11,33 @@ pub struct Script {
 }
 
 impl Serialize for Script {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
-        chunk.code_id = reader.read_i32().expect("Failed to read code_id");
+        chunk.name = reader.read_pointer_string()?;
+        chunk.code_id = reader.read_i32()?;
         if chunk.code_id < -1 {
             chunk.constructor = true;
-            chunk.code_id = (chunk.code_id as u32 & 2147483647) as i32;
+            chunk.code_id = (chunk.code_id as u32 & 0x7fffffff) as i32;
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_pointer_string(&chunk.name).expect("Failed to write name");
+        writer.write_pointer_string(&chunk.name)?;
         if chunk.constructor {
-            writer.write_u32(chunk.code_id as u32 | 2147483648).expect("Failed to write code id");
+            writer.write_u32(chunk.code_id as u32 | 0x80000000)?;
         } else {
-            writer.write_i32(chunk.code_id).expect("Failed to write code id");
+            writer.write_i32(chunk.code_id)?;
         }
+
+        Ok(())
     }
 }

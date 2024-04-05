@@ -1,6 +1,6 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer, models::sound::Sound, lists::GMPointerList};
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct ChunkSOND {
@@ -8,21 +8,23 @@ pub struct ChunkSOND {
 }
 
 impl Serialize for ChunkSOND {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.sounds.deserialize(reader, None, None);
+        chunk.sounds.deserialize(reader, None, None)?;
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        chunk.sounds.serialize(writer, None, None);
+        chunk.sounds.serialize(writer, None, None)?;
+
+        Ok(())
     }
 }

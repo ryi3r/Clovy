@@ -1,6 +1,6 @@
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer};
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 #[derive(Default, Clone)]
 pub struct DummyChunk {
@@ -8,7 +8,7 @@ pub struct DummyChunk {
 }
 
 impl Serialize for DummyChunk {
-    fn deserialize<R>(_reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(_reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let _chunk = Self {
@@ -17,12 +17,14 @@ impl Serialize for DummyChunk {
 
         todo!("Not implemented");
 
-        //chunk
+        //Ok(chunk)
     }
 
-    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>)
+    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         todo!("Not implemented");
+
+        //Ok(())
     }
 }

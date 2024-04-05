@@ -1,4 +1,4 @@
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 use bitflags::bitflags;
 use byteorder::WriteBytesExt;
 use crate::core::{lists::GMSimpleList, reader::Reader, serializing::Serialize, writer::Writer, models::option::Constant};
@@ -80,136 +80,140 @@ impl Default for ChunkOPTN {
 }
 
 impl Serialize for ChunkOPTN {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        reader.version_info.option_bit_flag = reader.read_i32().expect("Failed to read option bit flag") == i32::MIN;
-        reader.seek_relative(-4).expect("Failed to seek back");
+        reader.version_info.option_bit_flag = reader.read_i32()? == i32::MIN;
+        reader.seek_relative(-4)?;
 
         if reader.version_info.option_bit_flag {
-            chunk.unknown = reader.read_u64().expect("Failed to read unknown");
+            chunk.unknown = reader.read_u64()?;
             chunk.options = OptionsFlags::from_bits_truncate(
-                reader.read_u64().expect("Failed to read options"),
+                reader.read_u64()?,
             );
-            chunk.scale = reader.read_i32().expect("Failed to read scale");
-            chunk.window_color = reader.read_u32().expect("Failed to read window_color");
-            chunk.color_depth = reader.read_u32().expect("Failed to read color_depth");
-            chunk.resolution = reader.read_u32().expect("Failed to read resolution");
-            chunk.frequency = reader.read_u32().expect("Failed to read frequency");
-            chunk.vertex_sync = reader.read_u32().expect("Failed to read vertex_sync");
-            chunk.priority = reader.read_u32().expect("Failed to read priority");
-            chunk.splash_back_image = reader.read_u32().expect("Failed to read splash_back_image");
-            chunk.splash_front_image = reader.read_u32().expect("Failed to read splash_front_image");
-            chunk.splash_load_image = reader.read_u32().expect("Failed to read splash_load_image");
-            chunk.load_alpha = reader.read_u32().expect("Failed to read load_alpha");
+            chunk.scale = reader.read_i32()?;
+            chunk.window_color = reader.read_u32()?;
+            chunk.color_depth = reader.read_u32()?;
+            chunk.resolution = reader.read_u32()?;
+            chunk.frequency = reader.read_u32()?;
+            chunk.vertex_sync = reader.read_u32()?;
+            chunk.priority = reader.read_u32()?;
+            chunk.splash_back_image = reader.read_u32()?;
+            chunk.splash_front_image = reader.read_u32()?;
+            chunk.splash_load_image = reader.read_u32()?;
+            chunk.load_alpha = reader.read_u32()?;
         } else {
             let mut options = 0;
-            let mut read_option = |reader: &mut Reader<R>, option: OptionsFlags| {
-                if reader.read_wide_bool().expect("Failed to read option") {
+            let mut read_option = |reader: &mut Reader<R>, option: OptionsFlags| -> Result<()> {
+                if reader.read_wide_bool()? {
                     options |= option.bits();
                 }
+
+                Ok(())
             };
-            read_option(reader, OptionsFlags::Fullscreen);
-            read_option(reader, OptionsFlags::InterpolatePixels);
-            read_option(reader, OptionsFlags::UseNewAudio);
-            read_option(reader, OptionsFlags::NoBorder);
-            read_option(reader, OptionsFlags::ShowCursor);
-            chunk.scale = reader.read_i32().expect("Failed to read scale");
-            read_option(reader, OptionsFlags::Sizeable);
-            read_option(reader, OptionsFlags::StayOnTop);
-            chunk.window_color = reader.read_u32().expect("Failed to read window_color");
-            read_option(reader, OptionsFlags::ChangeResolution);
-            chunk.color_depth = reader.read_u32().expect("Failed to read color_depth");
-            chunk.resolution = reader.read_u32().expect("Failed to read resolution");
-            chunk.frequency = reader.read_u32().expect("Failed to read frequency");
-            read_option(reader, OptionsFlags::NoButtons);
-            chunk.vertex_sync = reader.read_u32().expect("Failed to read vertex_sync");
-            read_option(reader, OptionsFlags::ScreenKey);
-            read_option(reader, OptionsFlags::HelpKey);
-            read_option(reader, OptionsFlags::QuitKey);
-            read_option(reader, OptionsFlags::SaveKey);
-            read_option(reader, OptionsFlags::ScreenshotKey);
-            read_option(reader, OptionsFlags::CloseSec);
-            chunk.priority = reader.read_u32().expect("Failed to read priority");
-            read_option(reader, OptionsFlags::Freeze);
-            read_option(reader, OptionsFlags::ShowProgress);
-            chunk.splash_back_image = reader.read_u32().expect("Failed to read splash_back_image");
-            chunk.splash_front_image = reader.read_u32().expect("Failed to read splash_front_image");
-            chunk.splash_load_image = reader.read_u32().expect("Failed to read splash_load_image");
-            read_option(reader, OptionsFlags::LoadTransparent);
-            chunk.load_alpha = reader.read_u32().expect("Failed to read load_alpha");
-            read_option(reader, OptionsFlags::ScaleProgress);
-            read_option(reader, OptionsFlags::DisplayErrors);
-            read_option(reader, OptionsFlags::WriteErrors);
-            read_option(reader, OptionsFlags::AbortErrors);
-            read_option(reader, OptionsFlags::VariableErrors);
-            read_option(reader, OptionsFlags::CreationEventOrder);
+            read_option(reader, OptionsFlags::Fullscreen)?;
+            read_option(reader, OptionsFlags::InterpolatePixels)?;
+            read_option(reader, OptionsFlags::UseNewAudio)?;
+            read_option(reader, OptionsFlags::NoBorder)?;
+            read_option(reader, OptionsFlags::ShowCursor)?;
+            chunk.scale = reader.read_i32()?;
+            read_option(reader, OptionsFlags::Sizeable)?;
+            read_option(reader, OptionsFlags::StayOnTop)?;
+            chunk.window_color = reader.read_u32()?;
+            read_option(reader, OptionsFlags::ChangeResolution)?;
+            chunk.color_depth = reader.read_u32()?;
+            chunk.resolution = reader.read_u32()?;
+            chunk.frequency = reader.read_u32()?;
+            read_option(reader, OptionsFlags::NoButtons)?;
+            chunk.vertex_sync = reader.read_u32()?;
+            read_option(reader, OptionsFlags::ScreenKey)?;
+            read_option(reader, OptionsFlags::HelpKey)?;
+            read_option(reader, OptionsFlags::QuitKey)?;
+            read_option(reader, OptionsFlags::SaveKey)?;
+            read_option(reader, OptionsFlags::ScreenshotKey)?;
+            read_option(reader, OptionsFlags::CloseSec)?;
+            chunk.priority = reader.read_u32()?;
+            read_option(reader, OptionsFlags::Freeze)?;
+            read_option(reader, OptionsFlags::ShowProgress)?;
+            chunk.splash_back_image = reader.read_u32()?;
+            chunk.splash_front_image = reader.read_u32()?;
+            chunk.splash_load_image = reader.read_u32()?;
+            read_option(reader, OptionsFlags::LoadTransparent)?;
+            chunk.load_alpha = reader.read_u32()?;
+            read_option(reader, OptionsFlags::ScaleProgress)?;
+            read_option(reader, OptionsFlags::DisplayErrors)?;
+            read_option(reader, OptionsFlags::WriteErrors)?;
+            read_option(reader, OptionsFlags::AbortErrors)?;
+            read_option(reader, OptionsFlags::VariableErrors)?;
+            read_option(reader, OptionsFlags::CreationEventOrder)?;
             chunk.options = OptionsFlags::from_bits_truncate(options);
         }
 
-        chunk.constants.deserialize(reader, None, None);
+        chunk.constants.deserialize(reader, None, None)?;
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         if writer.version_info.option_bit_flag {
-            writer.write_u64(chunk.unknown).expect("Failed to write unknown");
-            writer.write_u64(chunk.options.bits()).expect("Failed to write options");
-            writer.write_i32(chunk.scale).expect("Failed to write scale");
-            writer.write_u32(chunk.window_color).expect("Failed to write window_color");
-            writer.write_u32(chunk.color_depth).expect("Failed to write color_depth");
-            writer.write_u32(chunk.resolution).expect("Failed to write resolution");
-            writer.write_u32(chunk.frequency).expect("Failed to write frequency");
-            writer.write_u32(chunk.vertex_sync).expect("Failed to write vertex_sync");
-            writer.write_u32(chunk.priority).expect("Failed to write priority");
-            writer.write_u32(chunk.splash_back_image).expect("Failed to write splash_back_image");
-            writer.write_u32(chunk.splash_front_image).expect("Failed to write splash_front_image");
-            writer.write_u32(chunk.splash_load_image).expect("Failed to write splash_load_image");
-            writer.write_u32(chunk.load_alpha).expect("Failed to write load_alpha");
+            writer.write_u64(chunk.unknown)?;
+            writer.write_u64(chunk.options.bits())?;
+            writer.write_i32(chunk.scale)?;
+            writer.write_u32(chunk.window_color)?;
+            writer.write_u32(chunk.color_depth)?;
+            writer.write_u32(chunk.resolution)?;
+            writer.write_u32(chunk.frequency)?;
+            writer.write_u32(chunk.vertex_sync)?;
+            writer.write_u32(chunk.priority)?;
+            writer.write_u32(chunk.splash_back_image)?;
+            writer.write_u32(chunk.splash_front_image)?;
+            writer.write_u32(chunk.splash_load_image)?;
+            writer.write_u32(chunk.load_alpha)?;
         } else {
-            let write_option = |writer: &mut Writer<W>, option: OptionsFlags| {
-                writer.write_wide_bool((chunk.options & option) == option).expect("Failed to write option");
+            let write_option = |writer: &mut Writer<W>, option: OptionsFlags| -> Result<()> {
+                writer.write_wide_bool((chunk.options & option) == option)
             };
-            write_option(writer, OptionsFlags::Fullscreen);
-            write_option(writer, OptionsFlags::InterpolatePixels);
-            write_option(writer, OptionsFlags::UseNewAudio);
-            write_option(writer, OptionsFlags::NoBorder);
-            write_option(writer, OptionsFlags::ShowCursor);
-            writer.write_i32(chunk.scale).expect("Failed to write scale");
-            write_option(writer, OptionsFlags::Sizeable);
-            write_option(writer, OptionsFlags::StayOnTop);
-            writer.write_u32(chunk.window_color).expect("Failed to write window_color");
-            write_option(writer, OptionsFlags::ChangeResolution);
-            writer.write_u32(chunk.color_depth).expect("Failed to write color_depth");
-            writer.write_u32(chunk.resolution).expect("Failed to write resolution");
-            writer.write_u32(chunk.frequency).expect("Failed to write frequency");
-            write_option(writer, OptionsFlags::NoButtons);
-            writer.write_u32(chunk.vertex_sync).expect("Failed to write vertex_sync");
-            write_option(writer, OptionsFlags::ScreenKey);
-            write_option(writer, OptionsFlags::HelpKey);
-            write_option(writer, OptionsFlags::QuitKey);
-            write_option(writer, OptionsFlags::SaveKey);
-            write_option(writer, OptionsFlags::ScreenshotKey);
-            write_option(writer, OptionsFlags::CloseSec);
-            writer.write_u32(chunk.priority).expect("Failed to write priority");
-            write_option(writer, OptionsFlags::Freeze);
-            write_option(writer, OptionsFlags::ShowProgress);
-            writer.write_u32(chunk.load_alpha).expect("Failed to write load_alpha");
-            write_option(writer, OptionsFlags::ScaleProgress);
-            write_option(writer, OptionsFlags::DisplayErrors);
-            write_option(writer, OptionsFlags::WriteErrors);
-            write_option(writer, OptionsFlags::AbortErrors);
-            write_option(writer, OptionsFlags::VariableErrors);
-            write_option(writer, OptionsFlags::CreationEventOrder);
+            write_option(writer, OptionsFlags::Fullscreen)?;
+            write_option(writer, OptionsFlags::InterpolatePixels)?;
+            write_option(writer, OptionsFlags::UseNewAudio)?;
+            write_option(writer, OptionsFlags::NoBorder)?;
+            write_option(writer, OptionsFlags::ShowCursor)?;
+            writer.write_i32(chunk.scale)?;
+            write_option(writer, OptionsFlags::Sizeable)?;
+            write_option(writer, OptionsFlags::StayOnTop)?;
+            writer.write_u32(chunk.window_color)?;
+            write_option(writer, OptionsFlags::ChangeResolution)?;
+            writer.write_u32(chunk.color_depth)?;
+            writer.write_u32(chunk.resolution)?;
+            writer.write_u32(chunk.frequency)?;
+            write_option(writer, OptionsFlags::NoButtons)?;
+            writer.write_u32(chunk.vertex_sync)?;
+            write_option(writer, OptionsFlags::ScreenKey)?;
+            write_option(writer, OptionsFlags::HelpKey)?;
+            write_option(writer, OptionsFlags::QuitKey)?;
+            write_option(writer, OptionsFlags::SaveKey)?;
+            write_option(writer, OptionsFlags::ScreenshotKey)?;
+            write_option(writer, OptionsFlags::CloseSec)?;
+            writer.write_u32(chunk.priority)?;
+            write_option(writer, OptionsFlags::Freeze)?;
+            write_option(writer, OptionsFlags::ShowProgress)?;
+            writer.write_u32(chunk.load_alpha)?;
+            write_option(writer, OptionsFlags::ScaleProgress)?;
+            write_option(writer, OptionsFlags::DisplayErrors)?;
+            write_option(writer, OptionsFlags::WriteErrors)?;
+            write_option(writer, OptionsFlags::AbortErrors)?;
+            write_option(writer, OptionsFlags::VariableErrors)?;
+            write_option(writer, OptionsFlags::CreationEventOrder)?;
         }
         
-        chunk.constants.serialize(writer, None, None);
+        chunk.constants.serialize(writer, None, None)?;
+
+        Ok(())
     }
 }

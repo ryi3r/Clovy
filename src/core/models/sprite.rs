@@ -3,7 +3,7 @@ use bitflags::bitflags;
 use bstr::BString;
 use byteorder::WriteBytesExt;
 use tracing::warn;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -78,50 +78,52 @@ pub struct Sprite {
     pub buffer: Vec<u8>,
     pub gms2_playback_speed: f32,
     pub gms2_playback_speed_type: AnimSpeedType,
-    pub gms2_3_sequence: u32,//SequenceReference,
+    pub gms2_3_sequence: u32, //SequenceReference,
     pub gms2_3_2_nine_slice: NineSlice,
     pub texture_items: GMPointerList<BString>, // TODO: Change this to Texture Item
     pub collision_masks: Vec<Vec<u8>>,
 }
 
 impl Serialize for Sprite {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
-        chunk.width = reader.read_i32().expect("Failed to read width");
-        chunk.height = reader.read_i32().expect("Failed to read height");
-        chunk.margin_left = reader.read_i32().expect("Failed to read margin_left");
-        chunk.margin_right = reader.read_i32().expect("Failed to read margin_right");
-        chunk.margin_bottom = reader.read_i32().expect("Failed to read margin_bottom");
-        chunk.margin_top = reader.read_i32().expect("Failed to read margin_top");
-        chunk.transparent = reader.read_bool().expect("Failed to read transparent");
-        chunk.smooth = reader.read_bool().expect("Failed to read smooth");
-        chunk.preload = reader.read_bool().expect("Failed to read preload");
-        chunk.bbox_mode = reader.read_u32().expect("Failed to read bbox_mode");
-        chunk.sep_masks = SepMaskType::from_bits_truncate(reader.read_i32().expect("Failed to read sep_masks"));
-        chunk.origin_x = reader.read_i32().expect("Failed to read origin_x");
-        chunk.origin_y = reader.read_i32().expect("Failed to read origin_y");
-        if reader.read_i32().expect("Failed to read special/gms2 sprite type") == -1 {
+        chunk.name = reader.read_pointer_string()?;
+        chunk.width = reader.read_i32()?;
+        chunk.height = reader.read_i32()?;
+        chunk.margin_left = reader.read_i32()?;
+        chunk.margin_right = reader.read_i32()?;
+        chunk.margin_bottom = reader.read_i32()?;
+        chunk.margin_top = reader.read_i32()?;
+        chunk.transparent = reader.read_bool()?;
+        chunk.smooth = reader.read_bool()?;
+        chunk.preload = reader.read_bool()?;
+        chunk.bbox_mode = reader.read_u32()?;
+        chunk.sep_masks = SepMaskType::from_bits_truncate(reader.read_i32()?);
+        chunk.origin_x = reader.read_i32()?;
+        chunk.origin_y = reader.read_i32()?;
+        if reader.read_i32()? == -1 {
             chunk.special_or_gms2 = true;
-            let version = reader.read_i32().expect("Failed to read version");
-            chunk.sprite_type = SpriteType::from_bits_retain(reader.read_i32().expect("Failed to read sprite_type"));
+            let version = reader.read_i32()?;
+            chunk.sprite_type = SpriteType::from_bits_retain(reader.read_i32()?);
             if reader.version_info.is_version_at_least(2, 0, 0, 0) {
-                chunk.gms2_playback_speed = reader.read_f32().expect("Failed to read gms2_playback_speed");
-                chunk.gms2_playback_speed_type = AnimSpeedType::from_bits_retain(reader.read_i32().expect("Failed to read gms2_playback_speed_type"));
+                chunk.gms2_playback_speed = reader.read_f32()?;
+                chunk.gms2_playback_speed_type = AnimSpeedType::from_bits_retain(reader.read_i32()?);
                 if version >= 2 {
                     //chunk.gms2_3_sequence = SequenceReference::deserialize(reader);
-                    chunk.gms2_3_sequence = reader.read_u32().expect("Failed to read gms2_3_sequence");
+                    chunk.gms2_3_sequence = reader.read_u32()?;
                     if version >= 3 {
                         reader.version_info.set_version(2, 3, 2, 0);
-                        chunk.gms2_3_2_nine_slice = reader.read_pointer_object::<NineSlice>();
+                        chunk.gms2_3_2_nine_slice = reader.read_pointer_object::<NineSlice>()?;
                     }
                 }
             }
+
+            // TODO: Finish this up
             match chunk.sprite_type {
                 SpriteType::Normal => {
 
@@ -137,13 +139,13 @@ impl Serialize for Sprite {
                 }
             }
         } else {
-            reader.seek_relative(-4).expect("Failed to seek back");
+            reader.seek_relative(-4)?;
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>)
+    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         todo!("Not implemented");
@@ -155,14 +157,14 @@ pub struct SequenceReference {
 }
 
 impl Serialize for SequenceReference {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let _chunk = Self {
             //..Default::default()
         };
 
-        if reader.read_i32().expect("Failed to read sequence version") != 1 {
+        if reader.read_i32()? != 1 {
             warn!("Unexpected version for sequence reference in Sprite.");
         }
 
@@ -171,7 +173,7 @@ impl Serialize for SequenceReference {
         //chunk
     }
 
-    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>)
+    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         todo!("Not implemented.");
@@ -189,35 +191,37 @@ pub struct NineSlice {
 }
 
 impl Serialize for NineSlice {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.left = reader.read_i32().expect("Failed to read left");
-        chunk.top = reader.read_i32().expect("Failed to read top");
-        chunk.right = reader.read_i32().expect("Failed to read right");
-        chunk.bottom = reader.read_i32().expect("Failed to read bottom");
-        chunk.enabled = reader.read_wide_bool().expect("Failed to read enabled");
+        chunk.left = reader.read_i32()?;
+        chunk.top = reader.read_i32()?;
+        chunk.right = reader.read_i32()?;
+        chunk.bottom = reader.read_i32()?;
+        chunk.enabled = reader.read_wide_bool()?;
         for _ in 0..5 {
-            chunk.tile_modes.push(TileMode::from_bits_retain(reader.read_i32().expect("Failed to read tile_mode")));
+            chunk.tile_modes.push(TileMode::from_bits_retain(reader.read_i32()?));
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_i32(chunk.left).expect("Failed to write left");
-        writer.write_i32(chunk.top).expect("Failed to write top");
-        writer.write_i32(chunk.right).expect("Failed to write right");
-        writer.write_i32(chunk.bottom).expect("Failed to write bottom");
-        writer.write_wide_bool(chunk.enabled).expect("Failed to write enabled");
+        writer.write_i32(chunk.left)?;
+        writer.write_i32(chunk.top)?;
+        writer.write_i32(chunk.right)?;
+        writer.write_i32(chunk.bottom)?;
+        writer.write_wide_bool(chunk.enabled)?;
         for tile_mode in chunk.tile_modes.iter() {
-            writer.write_i32(tile_mode.bits()).expect("Failed to write tile_mode");
+            writer.write_i32(tile_mode.bits())?;
         }
+
+        Ok(())
     }
 }

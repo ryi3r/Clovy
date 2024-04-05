@@ -1,4 +1,4 @@
-use std::{io::{Seek, Read}, fmt::Write};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 use bitflags::bitflags;
 use bstr::BString;
 use byteorder::WriteBytesExt;
@@ -169,98 +169,100 @@ impl Default for ChunkGEN8 {
 }
 
 impl Serialize for ChunkGEN8 {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.disable_debug = reader.read_bool().expect("Failed to read disable_debug");
-        chunk.format_id = reader.read_i8().expect("Failed to read format_id");
+        chunk.disable_debug = reader.read_bool()?;
+        chunk.format_id = reader.read_i8()?;
         reader.version_info.format_id = chunk.format_id;
-        chunk.unknown = reader.read_i16().expect("Failed to read unknown");
-        chunk.filename = reader.read_pointer_string().expect("Failed to read filename");
-        chunk.config = reader.read_pointer_string().expect("Failed to read config");
-        chunk.last_object_id = reader.read_i32().expect("Failed to read last_object_id");
-        chunk.last_tile_id = reader.read_i32().expect("Failed to read last_tile_id");
-        chunk.game_id = reader.read_i32().expect("Failed to read game_id");
-        chunk.legacy_guid = reader.read_bytes::<16>().expect("Failed to read legacy_guid");
-        chunk.game_name = reader.read_pointer_string().expect("Failed to read game_name");
-        chunk.major = reader.read_i32().expect("Failed to read major");
-        chunk.minor = reader.read_i32().expect("Failed to read minor");
-        chunk.release = reader.read_i32().expect("Failed to read release");
-        chunk.build = reader.read_i32().expect("Failed to read build");
+        chunk.unknown = reader.read_i16()?;
+        chunk.filename = reader.read_pointer_string()?;
+        chunk.config = reader.read_pointer_string()?;
+        chunk.last_object_id = reader.read_i32()?;
+        chunk.last_tile_id = reader.read_i32()?;
+        chunk.game_id = reader.read_i32()?;
+        chunk.legacy_guid = reader.read_bytes::<16>()?;
+        chunk.game_name = reader.read_pointer_string()?;
+        chunk.major = reader.read_i32()?;
+        chunk.minor = reader.read_i32()?;
+        chunk.release = reader.read_i32()?;
+        chunk.build = reader.read_i32()?;
         reader.version_info.set_version(chunk.major, chunk.minor, chunk.release, chunk.build);
-        chunk.default_window_width = reader.read_i32().expect("Failed to read default_window_width");
-        chunk.default_window_height = reader.read_i32().expect("Failed to read default_window_height");
-        chunk.info = InfoFlags::from_bits_retain(reader.read_u32().expect("Failed to read info"));
-        chunk.license_crc32 = reader.read_i32().expect("Failed to read license_crc32");
-        chunk.license_md5 = reader.read_bytes::<16>().expect("Failed to read license_md5");
-        chunk.timestamp = reader.read_i64().expect("Failed to read timestamp");
-        chunk.display_name = reader.read_pointer_string().expect("Failed to read display_name");
-        chunk.active_targets = reader.read_i64().expect("Failed to read active_targets");
-        chunk.function_classifications = FunctionClassification::from_bits_retain(reader.read_u64().expect("Failed to read function_classifications"));
-        chunk.steam_app_id = reader.read_i32().expect("Failed to read steam_app_id");
+        chunk.default_window_width = reader.read_i32()?;
+        chunk.default_window_height = reader.read_i32()?;
+        chunk.info = InfoFlags::from_bits_retain(reader.read_u32()?);
+        chunk.license_crc32 = reader.read_i32()?;
+        chunk.license_md5 = reader.read_bytes::<16>()?;
+        chunk.timestamp = reader.read_i64()?;
+        chunk.display_name = reader.read_pointer_string()?;
+        chunk.active_targets = reader.read_i64()?;
+        chunk.function_classifications = FunctionClassification::from_bits_retain(reader.read_u64()?);
+        chunk.steam_app_id = reader.read_i32()?;
         if chunk.format_id >= 14 {
-            chunk.debugger_port = reader.read_i32().expect("Failed to read debugger_port");
+            chunk.debugger_port = reader.read_i32()?;
         }
-        for _ in 0..reader.read_i32().expect("Failed to read room_order length") {
-            chunk.room_order.push(reader.read_i32().expect("Failed to read room_order value"));
+        for _ in 0..reader.read_i32()? {
+            chunk.room_order.push(reader.read_i32()?);
         }
         if reader.version_info.major >= 2 {
             for _ in 0..5 {
-                chunk.gms2_random_uid.push(reader.read_i64().expect("Failed to read gms2_random_uid value"));
+                chunk.gms2_random_uid.push(reader.read_i64()?);
             }
-            chunk.gms2_fps = reader.read_f32().expect("Failed to read gms2_fps");
-            chunk.gms2_allow_statistics = reader.read_wide_bool().expect("Failed to read gms2_allow_statistics");
-            chunk.gms2_game_guid = reader.read_bytes::<16>().expect("Failed to read gms2_game_guid").into();
+            chunk.gms2_fps = reader.read_f32()?;
+            chunk.gms2_allow_statistics = reader.read_wide_bool()?;
+            chunk.gms2_game_guid = reader.read_bytes::<16>()?.into();
         }
 
-        chunk
+        Ok(chunk)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
             where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_bool(chunk.disable_debug).expect("Failed to write disable_debug");
-        writer.write_i8(chunk.format_id).expect("Failed to write format_id");
-        writer.write_i16(chunk.unknown).expect("Failed to write unknown");
-        writer.write_pointer_string(&chunk.filename).expect("Failed to write filename");
-        writer.write_pointer_string(&chunk.config).expect("Failed to write config");
-        writer.write_i32(chunk.last_object_id).expect("Failed to write last_object_id");
-        writer.write_i32(chunk.last_tile_id).expect("Failed to write last_tile_id");
-        writer.write_i32(chunk.game_id).expect("Failed to write game_id");
-        writer.write_bytes(&chunk.legacy_guid).expect("Failed to write legacy_guid");
-        writer.write_pointer_string(&chunk.game_name).expect("Failed to write game_name");
-        writer.write_i32(chunk.major).expect("Failed to write major");
-        writer.write_i32(chunk.minor).expect("Failed to write minor");
-        writer.write_i32(chunk.release).expect("Failed to write release");
-        writer.write_i32(chunk.build).expect("Failed to write build");
-        writer.write_i32(chunk.default_window_width).expect("Failed to write default_window_width");
-        writer.write_i32(chunk.default_window_height).expect("Failed to write default_window_height");
-        writer.write_u32(chunk.info.bits()).expect("Failed to write info");
-        writer.write_i32(chunk.license_crc32).expect("Failed to write license_crc32");
-        writer.write_bytes(&chunk.license_md5).expect("Failed to write license_md5");
-        writer.write_i64(chunk.timestamp).expect("Failed to write timestamp");
-        writer.write_pointer_string(&chunk.display_name).expect("Failed to write display_name");
-        writer.write_i64(chunk.active_targets).expect("Failed to write active_targets");
-        writer.write_u64(chunk.function_classifications.bits()).expect("Failed to write function_classifications");
-        writer.write_i32(chunk.steam_app_id).expect("Failed to write steam_app_id");
+        writer.write_bool(chunk.disable_debug)?;
+        writer.write_i8(chunk.format_id)?;
+        writer.write_i16(chunk.unknown)?;
+        writer.write_pointer_string(&chunk.filename)?;
+        writer.write_pointer_string(&chunk.config)?;
+        writer.write_i32(chunk.last_object_id)?;
+        writer.write_i32(chunk.last_tile_id)?;
+        writer.write_i32(chunk.game_id)?;
+        writer.write_bytes(&chunk.legacy_guid)?;
+        writer.write_pointer_string(&chunk.game_name)?;
+        writer.write_i32(chunk.major)?;
+        writer.write_i32(chunk.minor)?;
+        writer.write_i32(chunk.release)?;
+        writer.write_i32(chunk.build)?;
+        writer.write_i32(chunk.default_window_width)?;
+        writer.write_i32(chunk.default_window_height)?;
+        writer.write_u32(chunk.info.bits())?;
+        writer.write_i32(chunk.license_crc32)?;
+        writer.write_bytes(&chunk.license_md5)?;
+        writer.write_i64(chunk.timestamp)?;
+        writer.write_pointer_string(&chunk.display_name)?;
+        writer.write_i64(chunk.active_targets)?;
+        writer.write_u64(chunk.function_classifications.bits())?;
+        writer.write_i32(chunk.steam_app_id)?;
         if chunk.format_id >= 14 {
-            writer.write_i32(chunk.debugger_port).expect("Failed to write debugger_port");
+            writer.write_i32(chunk.debugger_port)?;
         }
-        writer.write_i32(chunk.room_order.len() as i32).expect("Failed to write room_order length");
+        writer.write_i32(chunk.room_order.len() as i32)?;
         for room in &chunk.room_order {
-            writer.write_i32(*room).expect("Failed to write room_order value");
+            writer.write_i32(*room)?;
         }
         if writer.version_info.major >= 2 {
             for uid in &chunk.gms2_random_uid {
-                writer.write_i64(*uid).expect("Failed to write gms2_random_uid value");
+                writer.write_i64(*uid)?;
             }
-            writer.write_f32(chunk.gms2_fps).expect("Failed to write gms2_fps");
-            writer.write_wide_bool(chunk.gms2_allow_statistics).expect("Failed to write gms2_allow_statistics");
-            writer.write_bytes(&chunk.gms2_game_guid).expect("Failed to write gms2_game_guid");
+            writer.write_f32(chunk.gms2_fps)?;
+            writer.write_wide_bool(chunk.gms2_allow_statistics)?;
+            writer.write_bytes(&chunk.gms2_game_guid)?;
         }
+
+        Ok(())
     }
 }

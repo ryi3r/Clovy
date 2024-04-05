@@ -1,6 +1,6 @@
 use super::{reader::Reader, serializing::Serialize, writer::Writer};
 use byteorder::WriteBytesExt;
-use std::{fmt::Write, io::{Read, Seek, SeekFrom}, ops::Index};
+use std::{fmt::Write, io::{Read, Seek, SeekFrom, Result}, ops::Index};
 
 #[derive(Clone)]
 pub struct GMPointerList<T> {
@@ -20,59 +20,63 @@ impl<T> Default for GMPointerList<T>
 }
 
 // (Reader, Entry Pointer, Current Entry, Entry Count)
-type ReaderScriptBefore<R> = Box<dyn FnMut(&mut Reader<R>, u64, usize, usize)>;
-type ReaderScriptAfter<R> = Box<dyn FnMut(&mut Reader<R>, u64, usize, usize)>;
+type ReaderScriptBefore<R> = Box<dyn FnMut(&mut Reader<R>, u64, usize, usize) -> Result<()>>;
+type ReaderScriptAfter<R> = Box<dyn FnMut(&mut Reader<R>, u64, usize, usize) -> Result<()>>;
 
 // (Writer, Current Entry, Entry Count)
-type WriterScriptBefore<W> = Box<dyn FnMut(&mut Writer<W>, usize, usize)>;
-type WriterScriptAfter<W> = Box<dyn FnMut(&mut Writer<W>, usize, usize)>;
+type WriterScriptBefore<W> = Box<dyn FnMut(&mut Writer<W>, usize, usize) -> Result<()>>;
+type WriterScriptAfter<W> = Box<dyn FnMut(&mut Writer<W>, usize, usize) -> Result<()>>;
 
 impl<T> GMPointerList<T>
     where T: Serialize,
 {
-    pub fn deserialize<R>(&mut self, reader: &mut Reader<R>, mut script_before: Option<ReaderScriptBefore<R>>, mut script_after: Option<ReaderScriptAfter<R>>)
+    pub fn deserialize<R>(&mut self, reader: &mut Reader<R>, mut script_before: Option<ReaderScriptBefore<R>>, mut script_after: Option<ReaderScriptAfter<R>>) -> Result<()>
         where R: Read + Seek,
     {
         let mut ptr = Vec::new();
-        for _ in 0..reader.read_i32().expect("Failed to read pointer count") {
-            ptr.push(reader.read_u32().expect("Failed to read pointer"));
+        for _ in 0..reader.read_i32()? {
+            ptr.push(reader.read_u32()?);
         }
         let size = ptr.len();
         for (index, ptr) in ptr.iter().enumerate() {
             if let Some(script) = script_before.as_mut() {
-                script(reader, *ptr as _, index, size);
+                script(reader, *ptr as _, index, size)?;
             }
-            reader.seek(SeekFrom::Start(*ptr as _)).expect("Unable to seek to pointer");
-            self.values.push(T::deserialize(reader));
+            reader.seek(SeekFrom::Start(*ptr as _))?;
+            self.values.push(T::deserialize(reader)?);
             if let Some(script) = script_after.as_mut() {
-                script(reader, *ptr as _, index, size);
+                script(reader, *ptr as _, index, size)?;
             }
         }
+
+        Ok(())
     }
 
-    pub fn serialize<W>(&self, writer: &mut Writer<W>, mut script_before: Option<WriterScriptBefore<W>>, mut script_after: Option<WriterScriptAfter<W>>)
+    pub fn serialize<W>(&self, writer: &mut Writer<W>, mut script_before: Option<WriterScriptBefore<W>>, mut script_after: Option<WriterScriptAfter<W>>) -> Result<()>
     where
         W: Write + WriteBytesExt + Seek,
     {
-        writer.write_u32(self.values.len() as _).expect("Unable to write pointer count");
-        let offset = writer.stream_position().expect("Unable to get stream position");
+        writer.write_u32(self.values.len() as _)?;
+        let offset = writer.stream_position()?;
         for _ in 0..self.values.len() {
-            writer.write_u32(0).expect("Unable to write pointer");
+            writer.write_u32(0)?;
         }
         let size = self.values.len();
         for (index, value) in self.values.iter().enumerate() {
             if let Some(script) = script_before.as_mut() {
-                script(writer, index, size);
+                script(writer, index, size)?;
             }
-            let current_offset = writer.stream_position().expect("Unable to get stream position");
-            writer.seek(SeekFrom::Start(offset + (index * 4) as u64)).expect("Unable to seek to pointer");
-            writer.write_u32(current_offset as _).expect("Unable to write pointer");
-            writer.seek(SeekFrom::Start(current_offset)).expect("Unable to seek to pointer");
-            T::serialize(value, writer);
+            let current_offset = writer.stream_position()?;
+            writer.seek(SeekFrom::Start(offset + (index * 4) as u64))?;
+            writer.write_u32(current_offset as _)?;
+            writer.seek(SeekFrom::Start(current_offset))?;
+            T::serialize(value, writer)?;
             if let Some(script) = script_after.as_mut() {
-                script(writer, index, size);
+                script(writer, index, size)?;
             }
         }
+        
+        Ok(())
     }
 
     pub fn clear(&mut self) {
@@ -95,19 +99,20 @@ impl<T> GMPointerList<T>
 impl<T> Serialize for GMPointerList<T>
     where T: Serialize + Default,
 {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
             where R: Read + Seek {
         let mut list = Self {
             container: T::default(),
             values: Vec::new(),
         };
-        list.deserialize(reader, None, None);
-        list
+        list.deserialize(reader, None, None)?;
+
+        Ok(list)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
             where W: Write + WriteBytesExt + Seek {
-        chunk.serialize(writer, None, None);
+        chunk.serialize(writer, None, None)
     }
 }
 
@@ -139,36 +144,40 @@ impl<T> Default for GMSimpleList<T>
 impl<T> GMSimpleList<T>
     where T: Serialize,
 {
-    pub fn deserialize<R>(&mut self, reader: &mut Reader<R>, mut script_before: Option<ReaderScriptBefore<R>>, mut script_after: Option<ReaderScriptAfter<R>>)
+    pub fn deserialize<R>(&mut self, reader: &mut Reader<R>, mut script_before: Option<ReaderScriptBefore<R>>, mut script_after: Option<ReaderScriptAfter<R>>) -> Result<()>
         where R: Read + Seek,
     {
-        let size = reader.read_i32().expect("Failed to read pointer count");
+        let size = reader.read_i32()?;
         for index in 0..size {
-            let pos = reader.stream_position().expect("Failed to get stream position");
+            let pos = reader.stream_position()?;
             if let Some(script) = script_before.as_mut() {
-                script(reader, pos, index as _, size as _);
+                script(reader, pos, index as _, size as _)?;
             }
-            self.values.push(T::deserialize(reader));
+            self.values.push(T::deserialize(reader)?);
             if let Some(script) = script_after.as_mut() {
-                script(reader, pos, index as _, size as _);
+                script(reader, pos, index as _, size as _)?;
             }
         }
+
+        Ok(())
     }
 
-    pub fn serialize<W>(&self, writer: &mut Writer<W>, mut script_before: Option<WriterScriptBefore<W>>, mut script_after: Option<WriterScriptAfter<W>>)
+    pub fn serialize<W>(&self, writer: &mut Writer<W>, mut script_before: Option<WriterScriptBefore<W>>, mut script_after: Option<WriterScriptAfter<W>>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         let size = self.values.len();
-        writer.write_u32(self.values.len() as _).expect("Unable to write pointer count");
+        writer.write_u32(self.values.len() as _)?;
         for (index, value) in self.values.iter().enumerate() {
             if let Some(script) = script_before.as_mut() {
-                script(writer, index as _, size);
+                script(writer, index as _, size)?;
             }
-            T::serialize(value, writer);
+            T::serialize(value, writer)?;
             if let Some(script) = script_after.as_mut() {
-                script(writer, index as _, size);
+                script(writer, index as _, size)?;
             }
         }
+
+        Ok(())
     }
 
     pub fn clear(&mut self) {
@@ -199,18 +208,21 @@ impl<T> Index<usize> for GMSimpleList<T> {
 impl<T> Serialize for GMSimpleList<T>
     where T: Serialize + Default,
 {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
             where R: Read + Seek {
         let mut list = Self {
             container: T::default(),
             values: Vec::new(),
         };
-        list.deserialize(reader, None, None);
-        list
+        list.deserialize(reader, None, None)?;
+        
+        Ok(list)
     }
 
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
             where W: Write + WriteBytesExt + Seek {
-        chunk.serialize(writer, None, None);
+        chunk.serialize(writer, None, None)?;
+
+        Ok(())
     }
 }

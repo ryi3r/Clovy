@@ -1,4 +1,4 @@
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 use bstr::BString;
 use byteorder::WriteBytesExt;
 use crate::core::{reader::Reader, serializing::Serialize, writer::Writer};
@@ -10,23 +10,25 @@ pub struct Constant {
 }
 
 impl Serialize for Constant {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
-        chunk.value = reader.read_pointer_string().expect("Failed to read value");
+        chunk.name = reader.read_pointer_string()?;
+        chunk.value = reader.read_pointer_string()?;
 
-        chunk
+        Ok(chunk)
     }
     
-    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>)
+    fn serialize<W>(chunk: &Self, writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
-        writer.write_pointer_string(&chunk.name).expect("Failed to write name");
-        writer.write_pointer_string(&chunk.value).expect("Failed to write value");
+        writer.write_pointer_string(&chunk.name)?;
+        writer.write_pointer_string(&chunk.value)?;
+
+        Ok(())
     }
 }

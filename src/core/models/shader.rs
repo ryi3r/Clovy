@@ -3,7 +3,7 @@ use bitflags::bitflags;
 use bstr::BString;
 use byteorder::WriteBytesExt;
 use tracing::info;
-use std::{fmt::Write, io::{Read, Seek}};
+use std::{fmt::Write, io::{Read, Result, Seek}};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -66,34 +66,34 @@ impl Default for Shader {
 }
 
 impl Serialize for Shader {
-    fn deserialize<R>(reader: &mut Reader<R>) -> Self
+    fn deserialize<R>(reader: &mut Reader<R>) -> Result<Self>
         where R: Read + Seek,
     {
         let mut chunk = Self {
             ..Default::default()
         };
 
-        chunk.name = reader.read_pointer_string().expect("Failed to read name");
-        chunk.kind = ShaderType::from_bits_retain(reader.read_i32().expect("Failed to read kind"));
-        chunk.glsl_es_vertex = reader.read_pointer_string().expect("Failed to read glsl_es_vertex");
-        chunk.glsl_es_fragment = reader.read_pointer_string().expect("Failed to read glsl_es_fragment");
-        chunk.glsl_vertex = reader.read_pointer_string().expect("Failed to read glsl_vertex");
-        chunk.glsl_fragment = reader.read_pointer_string().expect("Failed to read glsl_fragment");
-        chunk.hlsl9_vertex = reader.read_pointer_string().expect("Failed to read hlsl9_vertex");
-        chunk.hlsl9_fragment = reader.read_pointer_string().expect("Failed to read hlsl9_fragment");
-        let ptr1 = reader.read_i32().expect("Failed to read ptr1");
+        chunk.name = reader.read_pointer_string()?;
+        chunk.kind = ShaderType::from_bits_retain(reader.read_i32()?);
+        chunk.glsl_es_vertex = reader.read_pointer_string()?;
+        chunk.glsl_es_fragment = reader.read_pointer_string()?;
+        chunk.glsl_vertex = reader.read_pointer_string()?;
+        chunk.glsl_fragment = reader.read_pointer_string()?;
+        chunk.hlsl9_vertex = reader.read_pointer_string()?;
+        chunk.hlsl9_fragment = reader.read_pointer_string()?;
+        let ptr1 = reader.read_i32()?;
         info!("{:?}", ptr1);
 
         todo!("Not implemented");
         // TODO: UTY's team didn't code shaders so I'll look into it later with another game
-        //chunk.hlsl11_vertex_buffer = reader.read_pointer_object(ptr1 as usize).expect("Failed to read hlsl11_vertex_buffer");
-        //let ptr2 = reader.read_i32().expect("Failed to read ptr2");
-        //chunk.hlsl11_pixel_buffer = reader.read_pointer_object(ptr2 as usize).expect("Failed to read hlsl11_pixel_buffer");
+        //chunk.hlsl11_vertex_buffer = reader.read_pointer_object(ptr1 as usize)?;
+        //let ptr2 = reader.read_i32()?;
+        //chunk.hlsl11_pixel_buffer = reader.read_pointer_object(ptr2 as usize)?;
 
         //chunk
     }
 
-    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>)
+    fn serialize<W>(_chunk: &Self, _writer: &mut Writer<W>) -> Result<()>
         where W: Write + WriteBytesExt + Seek,
     {
         todo!("Not implemented");
